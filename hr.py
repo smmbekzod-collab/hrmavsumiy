@@ -10,6 +10,7 @@ from aiogram.types import (
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
     FSInputFile
 )
 import pandas as pd
@@ -109,7 +110,7 @@ async def cmd_start(message: Message, state: FSMContext):
 
     if not user:
         await message.answer(logo_text, parse_mode="Markdown")
-        await message.answer("👋 Assalomu alaykum! Mavsumiy xodimlar nazorati tizimiga xush kelibsiz.\nTo'liq F.I.O. ingizni kiriting:")
+        await message.answer("👋 Assalomu alaykum! Mavsumiy xodimlar nazorati tizimiga xush kelibsiz.\nTo'liq F.I.O. ingizni kiriting:", reply_markup=ReplyKeyboardRemove())
         await state.set_state(RegState.name)
     else:
         await message.answer(logo_text, parse_mode="Markdown")
@@ -150,23 +151,21 @@ async def reg_org(message: Message, state: FSMContext):
     db.close()
 
     await message.answer(
-        "📸 **Diqqat!** Iltimos, pastdagi skripka/papka tugmasini emas, telefoningizdagi **Kamera (📷)** belgisini bosib jonli selfi oling va yuboring:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="📸 Kameradan selfi yuborish tushunarli")]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
+        "🚨 **DIQQAT! QAT'IY QOIDALAR:**\n\n"
+        "Galereyadan eski rasm yoki boshqa fayl yuborish taqiqlanadi! "
+        "Faqat telefoningiz kamerasi orqali **jonli selfi** olib yuboring (aks holda tizim ro'yxatdan o'tkazmaydi):",
+        reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(RegState.face_photo)
-
-# Tugma bosilganda reaksiya bo'lishi uchun handler qo'shildi:
-@router.message(RegState.face_photo, F.text == "📸 Kameradan selfi yuborish tushunarli")
-async def reg_camera_info(message: Message):
-    await message.answer("Tushunarli! Endi iltimos, chatdagi 📎 (skaner/fayl) tugmasini bosib emas, telefoningiz kamerasi orqali suratga olib yuboring.")
 
 @router.message(RegState.face_photo, F.photo)
 async def reg_face(message: Message, state: FSMContext):
     photo = message.photo[-1]
+    
+    # Qattiq tekshiruv: Agar rasm kengligi balandligidan sezilarli farq qilsa yoki galereyadan olingan landshaft format bo'lsa
+    if photo.width > photo.height:
+        await message.answer("❌ **Xatolik!** Bu galereyadan olingan yoki gorizontal rasmga o'xshaydi.\nIltimos, galereyadan emas, **faqat kamerani ochib jonli selfi** yuboring:")
+        return
 
     file_info = await bot.get_file(photo.file_id)
     file_path = f"faces/reg_{message.from_user.id}.jpg"
@@ -234,7 +233,8 @@ async def att_start(message: Message, state: FSMContext):
         f"📍 {action_name} uchun turgan joyingiz (lokatsiyangiz)ni quyidagi tugma orqali yuboring:",
         reply_markup=ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text="📍 Lokatsiyani yuborish", request_location=True)]],
-            resize_keyboard=True
+            resize_keyboard=True,
+            one_time_keyboard=True
         )
     )
     await state.set_state(AttState.location)
@@ -245,22 +245,21 @@ async def att_location(message: Message, state: FSMContext):
     await state.update_data(lat=user_loc.latitude, lon=user_loc.longitude)
 
     await message.answer(
-        "✅ Lokatsiya qabul qilindi! Endi o'sha yerdaligingizni tasdiqlash uchun telefoningiz kamerasi orqali selfi tushib yuboring:", 
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="📸 Kameradan selfi yuborish tushunarli")]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
+        "✅ Lokatsiya qabul qilindi!\n\n"
+        "🚨 **DIQQAT:** Galereyadan eski rasm tashlash qat'iyan taqiqlanadi! "
+        "Hozir turgan joyingizni tasdiqlash uchun **faqat kamerani ochib jonli selfi** yuboring:", 
+        reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(AttState.face_check)
-
-@router.message(AttState.face_check, F.text == "📸 Kameradan selfi yuborish tushunarli")
-async def att_camera_info(message: Message):
-    await message.answer("Tushunarli! Iltimos, hozirgi vaqtda olingan jonli rasmingizni yuboring.")
 
 @router.message(AttState.face_check, F.photo)
 async def att_face_verify(message: Message, state: FSMContext):
     photo = message.photo[-1]
+
+    # Qattiq tekshiruv: Galereyadan yuklangan yoki yotig'i (gorizontal) rasmlarni bloklash
+    if photo.width > photo.height:
+        await message.answer("❌ **Rad etildi!** Bu galereyadan olingan eski yoki noto'g'ri formatdagi rasm.\nIltimos, galereyadan foydalanmang, **faqat kameradan jonli selfi** olib tashlang:")
+        return
 
     data = await state.get_data()
     action_type = data.get("action_type", "IN")
@@ -320,7 +319,7 @@ async def delete_user_prompt(message: Message, state: FSMContext):
         worker_dict[idx] = w.telegram_id
 
     await state.update_data(worker_dict=worker_dict)
-    await message.answer(text)
+    await message.answer(text, reply_markup=ReplyKeyboardRemove())
     await state.set_state(DeleteUserState.worker_index)
 
 @router.message(DeleteUserState.worker_index)
@@ -369,7 +368,7 @@ async def report_prompt(message: Message, state: FSMContext):
         await message.answer("Sizda bu amalni bajarish huquqi yo'q.")
         return
 
-    await message.answer("Qaysi oy uchun hisobot kerak? Formatni kiriting (Masalan: **2026-08**):")
+    await message.answer("Qaysi oy uchun hisobot kerak? Formatni kiriting (Masalan: **2026-08**):", reply_markup=ReplyKeyboardRemove())
     await state.set_state(ReportState.month)
 
 @router.message(ReportState.month)
