@@ -3,3 +3,6 @@ pandas
 openpyxl
 SQLAlchemy
 Pillow
+opencv-python
+deepface
+tf-keras
