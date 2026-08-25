@@ -28,7 +28,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# --- DATABASE SETUP ---
+--- DATABASE SETUP ---
 DATABASE_URL = "sqlite:///attendance_stable_pro.db"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
@@ -61,7 +61,7 @@ class Attendance(Base):
 
 Base.metadata.create_all(bind=engine)
 
-TOKEN = "8930002769:AAHmEhG7ewmv6z4Km1mA-8hBr7H4ZeYg1VU"  # Bot tokeningizni shu yerga yozasiz
+TOKEN = "8930002769:AAHmEhG7ewmv6z4Km1mA-8hBr7H4ZeYg1VU"  # Bot tokeningiz
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 router = Router()
@@ -96,25 +96,23 @@ def get_menu(role):
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
-    
-    # Chiroyli logotip matni
+
+    # 1-variantdagi logotip matni
     logo_text = (
         "🌿 **[ A G R O S T A R ]** 🌿\n"
         "----------------------------\n"
         "   **WMS & HR SYSTEM / 2026**"
     )
-    
+
     db = SessionLocal()
     user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
     db.close()
 
     if not user:
-        # Avval logotipni, keyin ro'yxatdan o'tish matnini yuboramiz
         await message.answer(logo_text, parse_mode="Markdown")
         await message.answer("👋 Assalomu alaykum! Mavsumiy xodimlar nazorati tizimiga xush kelibsiz.\nTo'liq F.I.O. ingizni kiriting:")
         await state.set_state(RegState.name)
     else:
-        # Agar ro'yxatdan o'tgan bo'lsa, logotip bilan birga xush kelibsiz deymiz
         await message.answer(logo_text, parse_mode="Markdown")
         await message.answer(f"Xush kelibsiz, {user.full_name}!", reply_markup=get_menu(user.role))
 
@@ -152,7 +150,17 @@ async def reg_org(message: Message, state: FSMContext):
     await state.update_data(org_id=org_id)
     db.close()
 
-    await message.answer("📸 Endi shaxsingizni tasdiqlash uchun yuzingiz aniq ko'ringan rasmingizni (selfi) yuboring:")
+    # Kameradan rasmga olish uchun maxsus ko'rsatma va tugma
+    camera_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📸 Kameradan rasmga olish (Selfi)")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+    await message.answer(
+        "📸 Endi shaxsingizni tasdiqlash uchun pastdagi tugma orqali yoki bevosita kameradan **selfi rasm** yuboring:",
+        reply_markup=camera_kb
+    )
     await state.set_state(RegState.face_photo)
 
 @router.message(RegState.face_photo, F.photo)
@@ -186,14 +194,14 @@ async def reg_face(message: Message, state: FSMContext):
         reply_markup=get_menu(role)
     )
 
-# --- ATTENDANCE PROCESS ---
+--- ATTENDANCE PROCESS ---
 @router.message(F.text.in_(["🟢 Ishga Keldim", "🔴 Ishdan Ketdim"]))
 async def att_start(message: Message, state: FSMContext):
     action_type = "IN" if message.text == "🟢 Ishga Keldim" else "OUT"
-    
+
     db = SessionLocal()
     user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
-    
+
     if not user:
         db.close()
         await message.answer("Iltimos, avval /start buyrug'ini bosing.")
@@ -205,7 +213,7 @@ async def att_start(message: Message, state: FSMContext):
         Attendance.action == action_type,
         Attendance.timestamp >= today_start
     ).first()
-    
+
     role = user.role
     db.close()
 
@@ -219,7 +227,7 @@ async def att_start(message: Message, state: FSMContext):
 
     await state.update_data(action_type=action_type)
     action_name = "ishga kelish" if action_type == "IN" else "ishdan ketish"
-    
+
     await message.answer(
         f"📍 {action_name} uchun turgan joyingiz (lokatsiyangiz)ni quyidagi tugma orqali yuboring:",
         reply_markup=ReplyKeyboardMarkup(
@@ -234,7 +242,13 @@ async def att_location(message: Message, state: FSMContext):
     user_loc = message.location
     await state.update_data(lat=user_loc.latitude, lon=user_loc.longitude)
 
-    await message.answer("✅ Lokatsiya qabul qilindi! Endi o'sha yerdaligingizni tasdiqlash uchun **hozirgi rasmingizni (selfi)** yuboring:")
+    camera_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📸 Kameradan selfi yuborish")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+    await message.answer("✅ Lokatsiya qabul qilindi! Endi o'sha yerdaligingizni tasdiqlash uchun kameradan **selfi rasmingizni** yuboring:", reply_markup=camera_kb)
     await state.set_state(AttState.face_check)
 
 @router.message(AttState.face_check, F.photo)
@@ -262,7 +276,7 @@ async def att_face_verify(message: Message, state: FSMContext):
     )
     db.add(new_att)
     db.commit()
-    
+
     role = user.role
     db.close()
 
@@ -273,7 +287,7 @@ async def att_face_verify(message: Message, state: FSMContext):
         reply_markup=get_menu(role)
     )
 
-# --- DELETE USER BY INDEX FOR HR ADMIN ---
+--- DELETE USER BY INDEX FOR HR ADMIN ---
 @router.message(F.text == "🗑️ Xodimni o'chirish")
 async def delete_user_prompt(message: Message, state: FSMContext):
     db = SessionLocal()
@@ -284,7 +298,6 @@ async def delete_user_prompt(message: Message, state: FSMContext):
         await message.answer("Sizda bu amalni bajarish huquqi yo'q.")
         return
 
-    # Faqat shu tashkilotdagi xodimlarni chiqaramiz (hr_admin o'zini ham yoki faqat ishchilarni)
     workers = db.query(User).filter(User.org_id == admin.org_id).all()
     db.close()
 
@@ -298,7 +311,6 @@ async def delete_user_prompt(message: Message, state: FSMContext):
         text += f"{idx}. {w.full_name} ({w.role.upper()})\n"
         worker_dict[idx] = w.telegram_id
 
-    # Ma'lumotlarni state ga saqlab qo'yamiz
     await state.update_data(worker_dict=worker_dict)
     await message.answer(text)
     await state.set_state(DeleteUserState.worker_index)
@@ -330,7 +342,6 @@ async def delete_user_process(message: Message, state: FSMContext):
         return
 
     name = target_user.full_name
-    # Davomat va xodimni o'chirish
     db.query(Attendance).filter(Attendance.telegram_id == target_telegram_id).delete()
     db.delete(target_user)
     db.commit()
@@ -339,7 +350,7 @@ async def delete_user_process(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(f"✅ '{name}' bazadan muvaffaqiyatli o'chirib yuborildi.", reply_markup=get_menu("hr_admin"))
 
-# --- EXCEL REPORT WITH EMBEDDED IMAGES ---
+--- EXCEL REPORT WITH EMBEDDED IMAGES ---
 @router.message(F.text == "📊 Oylik Hisobot (Excel)")
 async def report_prompt(message: Message, state: FSMContext):
     db = SessionLocal()
@@ -392,7 +403,7 @@ async def generate_excel_report(message: Message, state: FSMContext):
         return
 
     file_path = f"reports/{org.name}_{month_str}.xlsx"
-    
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Oylik Davomat"
