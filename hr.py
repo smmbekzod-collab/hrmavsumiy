@@ -439,7 +439,7 @@ async def generate_excel_report(message: Message, state: FSMContext):
                 img.width = 70
                 img.height = 70
                 ws.add_image(img, f"F{current_row}")
-            exceptException as e:
+            except Exception as e:
                 print(f"Rasm qo'shishda xatolik: {e}")
 
     wb.save(file_path)
