@@ -61,7 +61,7 @@ class Attendance(Base):
 
 Base.metadata.create_all(bind=engine)
 
-TOKEN = "8930002769:AAHmEhG7ewmv6z4Km1mA-8hBr7H4ZeYg1VU"  # Bot tokeningiz
+TOKEN = "8930002769:AAHmEhG7ewmv6z4Km1mA-8hBr7H4ZeYg1VU"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 router = Router()
@@ -149,33 +149,24 @@ async def reg_org(message: Message, state: FSMContext):
     await state.update_data(org_id=org_id)
     db.close()
 
-    camera_kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📸 Kameradan selfi yuborish")]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
-
     await message.answer(
-        "📸 **Diqqat!** Galereyadan rasm yuklash taqiqlanadi.\nIltimos, faqat kamerani ochib **jonli selfi** yuboring:",
-        reply_markup=camera_kb
+        "📸 **Diqqat!** Iltimos, pastdagi skripka/papka tugmasini emas, telefoningizdagi **Kamera (📷)** belgisini bosib jonli selfi oling va yuboring:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="📸 Kameradan selfi yuborish tushunarli")]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
     )
     await state.set_state(RegState.face_photo)
+
+# Tugma bosilganda reaksiya bo'lishi uchun handler qo'shildi:
+@router.message(RegState.face_photo, F.text == "📸 Kameradan selfi yuborish tushunarli")
+async def reg_camera_info(message: Message):
+    await message.answer("Tushunarli! Endi iltimos, chatdagi 📎 (skaner/fayl) tugmasini bosib emas, telefoningiz kamerasi orqali suratga olib yuboring.")
 
 @router.message(RegState.face_photo, F.photo)
 async def reg_face(message: Message, state: FSMContext):
     photo = message.photo[-1]
-    
-    # Telegram orqali kelgan rasm kengaytirilgan ma'lumotlarida file_size / unique_id orqali yoki 
-    # agar rasm hujjat (document) ko'rinishida yuborilgan bo'lsa uni ushlaymiz. 
-    # Oddiy rasm galereyadan tanlansa ham, kameradan olinsa ham photo bo'ladi, 
-    # lekin Telegram kameradan olingan rasmlarni odatda 'compressed' (siqilgan) holatda yoki maxsus belgi bilan beradi.
-    # Eng asosiysi: Agar foydalanuvchi fayl (document) yoki galereyadan yuborsa, uning kengaytmasini tekshiramiz.
-    # Lekin eng aniq usul: Agar rasm xira yoki noto'g'ri bo'lsa, uni oldini olish uchun pastdagi tekshiruv:
-    
-    # Telegram API orqali kelgan rasmning width va height nisbatlarini tekshiramiz (selfi asosan tikka bo'ladi)
-    if photo.width > photo.height:
-        await message.answer("⚠️ Bu galereyadan olingan yoki gorizontal rasmga o'xshaydi!\nIltimos, faqat **kameradan tikka holatda selfi** olib yuboring:")
-        return
 
     file_info = await bot.get_file(photo.file_id)
     file_path = f"faces/reg_{message.from_user.id}.jpg"
@@ -253,26 +244,23 @@ async def att_location(message: Message, state: FSMContext):
     user_loc = message.location
     await state.update_data(lat=user_loc.latitude, lon=user_loc.longitude)
 
-    camera_kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📸 Kameradan selfi yuborish")]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
-
     await message.answer(
-        "✅ Lokatsiya qabul qilindi! Endi o'sha yerdaligingizni tasdiqlash uchun galereyadan emas, **faqat kameradan selfi** yuboring:", 
-        reply_markup=camera_kb
+        "✅ Lokatsiya qabul qilindi! Endi o'sha yerdaligingizni tasdiqlash uchun telefoningiz kamerasi orqali selfi tushib yuboring:", 
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="📸 Kameradan selfi yuborish tushunarli")]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
     )
     await state.set_state(AttState.face_check)
+
+@router.message(AttState.face_check, F.text == "📸 Kameradan selfi yuborish tushunarli")
+async def att_camera_info(message: Message):
+    await message.answer("Tushunarli! Iltimos, hozirgi vaqtda olingan jonli rasmingizni yuboring.")
 
 @router.message(AttState.face_check, F.photo)
 async def att_face_verify(message: Message, state: FSMContext):
     photo = message.photo[-1]
-
-    # Galereyadan eski rasm tashlasa yoki landshaft (gorizontal) rasm yuborsa rad etamiz
-    if photo.width > photo.height:
-        await message.answer("❌ Bu galereyadan yuklangan yoki noto'g'ri formatdagi rasm! Iltimos, kamerani ochib **jonli selfi** yuboring:")
-        return
 
     data = await state.get_data()
     action_type = data.get("action_type", "IN")
@@ -451,7 +439,7 @@ async def generate_excel_report(message: Message, state: FSMContext):
                 img.width = 70
                 img.height = 70
                 ws.add_image(img, f"F{current_row}")
-            except Exception as e:
+            exceptException as e:
                 print(f"Rasm qo'shishda xatolik: {e}")
 
     wb.save(file_path)
