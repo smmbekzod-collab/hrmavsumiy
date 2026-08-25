@@ -12,9 +12,7 @@ from aiogram.types import (
     Message,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
-    FSInputFile,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton
+    FSInputFile
 )
 import pandas as pd
 import openpyxl
@@ -32,8 +30,11 @@ from sqlalchemy import (
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+# --- AI & FACE RECOGNITION LIBRARY ---
+from deepface import DeepFace
+
 # --- DATABASE SETUP ---
-DATABASE_URL = "sqlite:///attendance_stable_pro.db"
+DATABASE_URL = "sqlite:///attendance_ai_pro.db"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
@@ -98,22 +99,37 @@ def get_menu(role):
         kb.append([KeyboardButton(text="🗑️ Xodimni o'chirish")])
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-# --- FAYL VA KAMERA FORMATINI TEKSHIRUVCHI QAT'IY FUNKSIYA ---
-def validate_camera_capture(file_path):
+# --- SUN'IY INTELLECT ORQALI YUZNI TEKSHIRISH VA ANIQ ANIqlash ---
+def verify_human_face(img_path):
+    """
+    DeepFace yordamida rasmda haqiqiy odam yuzi bor-yo'qligini tekshiradi.
+    Agar rasmda yuz topilmasa yoki u baklashka/buyum bo'lsa, xato beradi.
+    """
     try:
-        with PILImage.open(file_path) as img:
-            width, height = img.size
-            
-            # 1. Selfi har doim portret (tik) bo'lishi kerak. Eni bo'yidan katta bo'lsa (yotiq rasm/baklashka/uy rasmi) - rad etamiz
-            if width > height:
-                return False
-                
-            # 2. Juda kichik yoki juda g'alati o'lchamdagi rasmlarni bloklash
-            if width < 300 or height < 400:
-                return False
-                
-        return True
-    except Exception:
+        # Rasmda yuz mavjudligini va sifatini aniqlash uchun detector_backend (opencv yoki retinaface)
+        analysis = DeepFace.extract_faces(img_path = img_path, detector_backend = 'opencv', enforce_detection = True)
+        if len(analysis) > 0:
+            return True
+        return False
+    except Exception as e:
+        print(f"Yuz aniqlanmadi: {e}")
+        return False
+
+def compare_faces(img1_path, img2_path):
+    """
+    Ikki rasm (Ro'yxatdan o'tishdagi rasm va Hozirgi tashlangan rasm) 
+    bir xil odamga tegishli ekanligini AI orqali tekshiradi.
+    """
+    try:
+        result = DeepFace.verify(
+            img1_path = img1_path, 
+            img2_path = img2_path, 
+            detector_backend = 'opencv',
+            enforce_detection = True
+        )
+        return result.get("verified", False)
+    except Exception as e:
+        print(f"Yuzni solishtirishda xatolik: {e}")
         return False
 
 @router.message(Command("start"))
@@ -121,9 +137,9 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
 
     logo_text = (
-        "🌿 **[ A G R O S T A R ]** 🌿\n"
+        "🌿 **[ A G R O S T A R - AI ]** 🌿\n"
         "----------------------------\n"
-        "   **WMS & HR SYSTEM / 2026**"
+        "   **WMS & SMART HR / 2026**"
     )
 
     db = SessionLocal()
@@ -132,7 +148,7 @@ async def cmd_start(message: Message, state: FSMContext):
 
     if not user:
         await message.answer(logo_text, parse_mode="Markdown")
-        await message.answer("👋 Assalomu alaykum! Mavsumiy xodimlar nazorati tizimiga xush kelibsiz.\nTo'liq F.I.O. ingizni kiriting:", reply_markup=ReplyKeyboardRemove())
+        await message.answer("👋 Assalomu alaykum! Sun'iy intellektga asoslangan davomat tizimiga xush kelibsiz.\nTo'liq F.I.O. ingizni kiriting:", reply_markup=ReplyKeyboardRemove())
         await state.set_state(RegState.name)
     else:
         await message.answer(logo_text, parse_mode="Markdown")
@@ -173,8 +189,8 @@ async def reg_org(message: Message, state: FSMContext):
     db.close()
 
     await message.answer(
-        "📸 **KAMERA ORQALI RASMGA OLISH TALabi:**\n\n"
-        "Iltimos, galereyadan foydalanmang! Telefoningizdagi **kamera tugmasini bosib**, to'g'ridan-to'g'ri o'zingizning **jonli selfiyingizni** tushirib yuboring:",
+        "🤖 **SUN'IY INTELLEKT YUZINI QAYD ETISH:**\n\n"
+        "Iltimos, kamera orqali **faqat o'z yuzingiz aniq ko'ringan** selfi yuboring. AI bu rasmni sizning etalon bazangizga saqlab oladi:",
         reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(RegState.face_photo)
@@ -183,14 +199,15 @@ async def reg_org(message: Message, state: FSMContext):
 async def reg_face(message: Message, state: FSMContext):
     photo = message.photo[-1]
     
-    temp_path = f"temp_downloads/reg_temp_{message.from_user.id}.jpg"
+    temp_path = f"temp_downloads/reg_ai_{message.from_user.id}.jpg"
     file_info = await bot.get_file(photo.file_id)
     await bot.download_file(file_info.file_path, temp_path)
 
-    if not validate_camera_capture(temp_path):
+    # SUN'IY INTELLEKT ORQALI YUZ BOR-YO'QLIGINI TEKSHIRAMIZ
+    if not verify_human_face(temp_path):
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        await message.answer("❌ **Rad etildi!** Bu galereyadan olingan yoki yotiq holatdagi rasm/buyum.\nIltimos, **faqat kamerani ochib jonli selfi** oling:")
+        await message.answer("❌ **AI Rad etdi!** Bu yerda aniq inson yuzi topilmadi (baklashka yoki boshqa narsa o'tmaydi).\nIltimos, **faqat o'z yuzingizni** aniq qilib yuboring:")
         return
 
     file_path = f"faces/reg_{message.from_user.id}.jpg"
@@ -216,12 +233,12 @@ async def reg_face(message: Message, state: FSMContext):
 
     await state.clear()
     await message.answer(
-        f"✅ **Tabriklayman! Siz tizimdan muvaffaqiyatli ro'yxatdan o'tdingiz.**\n"
+        f"✅ **Tabriklayman! AI yuzingizni muvaffaqiyatli tanib bazaga saqladi.**\n"
         f"Sizning rolingiz: **{role.upper()}**",
         reply_markup=get_menu(role)
     )
 
-# --- ATTENDANCE PROCESS ---
+# --- ATTENDANCE PROCESS WITH AI FACE RECOGNITION ---
 @router.message(F.text.in_(["🟢 Ishga Keldim", "🔴 Ishdan Ketdim"]))
 async def att_start(message: Message, state: FSMContext):
     action_type = "IN" if message.text == "🟢 Ishga Keldim" else "OUT"
@@ -272,9 +289,9 @@ async def att_location(message: Message, state: FSMContext):
 
     await message.answer(
         "✅ Lokatsiya qabul qilindi!\n\n"
-        "📸 **KAMERA ORQALI SELFİ YUBORING:**\n"
-        "Galereyadan foydalanish yoki boshqa narsalarning rasmini tashlash qat'iyan taqiqlanadi! "
-        "Hozir turgan joyingizni tasdiqlash uchun **faqat kamerani ochib jonli selfi** yuboring:", 
+        "🤖 **AI YUZNI TEKSHIRISH BOSQICHI:**\n"
+        "Hozir yuboradigan selfiyingiz **ro'yxatdan o'tganingizdagi yuzingiz bilan 100% mos kelishi shart!** "
+        "Boshqa odam, baklashka yoki eski boshqa rasm o'tmaydi. Jonli selfi yuboring:", 
         reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(AttState.face_check)
@@ -283,14 +300,30 @@ async def att_location(message: Message, state: FSMContext):
 async def att_face_verify(message: Message, state: FSMContext):
     photo = message.photo[-1]
 
-    temp_path = f"temp_downloads/check_temp_{message.from_user.id}.jpg"
+    temp_path = f"temp_downloads/check_ai_{message.from_user.id}.jpg"
     file_info = await bot.get_file(photo.file_id)
     await bot.download_file(file_info.file_path, temp_path)
 
-    if not validate_camera_capture(temp_path):
+    db = SessionLocal()
+    user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
+    registered_face_path = user.face_image_path
+
+    # 1. Rasmda haqiqiy inson yuzi borligini tekshiramiz
+    if not verify_human_face(temp_path):
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        await message.answer("❌ **Rad etildi!** Bu galereyadan olingan yoki noto'g'ri formatdagi rasm.\nIltimos, **kamerani ochib o'zingizning jonli selfiyingizni** yuboring:")
+        db.close()
+        await message.answer("❌ **AI Rad etdi!** Yuborilgan rasmda inson yuzi topilmadi (baklashka yoki buyum). Iltimos, **o'z yuzingizni** yuboring:")
+        return
+
+    # 2. SUN'IY INTELLEKT ORQALI IKKI YUZNI TAQQOSLAYMIZ (Face Verification)
+    is_same_person = compare_faces(registered_face_path, temp_path)
+
+    if not is_same_person:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        db.close()
+        await message.answer("🚨 **Yuzlar mos kelmadi!** AI bu rasm ro'yxatdan o'tgan xodimga tegishli emasligini aniqladi. Qaytadan o'z yuzingiz bilan urinib ko'ring:")
         return
 
     check_path = f"faces/check_{message.from_user.id}_{int(datetime.now().timestamp())}.jpg"
@@ -301,9 +334,6 @@ async def att_face_verify(message: Message, state: FSMContext):
     action_type = data.get("action_type", "IN")
     lat = data.get("lat")
     lon = data.get("lon")
-
-    db = SessionLocal()
-    user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
 
     new_att = Attendance(
         telegram_id=user.telegram_id,
@@ -322,7 +352,7 @@ async def att_face_verify(message: Message, state: FSMContext):
     await state.clear()
     action_text = "ishga keldi ✅" if action_type == "IN" else "ishdan ketdi ❌"
     await message.answer(
-        f"🎉 Muvaffaqiyatli qayd etildi: Siz **{action_text}**.", 
+        f"🎉 **AI Tasdiqladi!** Muvaffaqiyatli qayd etildi: Siz **{action_text}**.", 
         reply_markup=get_menu(role)
     )
 
@@ -445,9 +475,9 @@ async def generate_excel_report(message: Message, state: FSMContext):
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Oylik Davomat"
+    ws.title = "Oylik Davomat AI"
 
-    headers = ["F.I.O.", "Harakat", "Vaqti", "Kenglik (Lat)", "Uzunlik (Lon)", "Selfi Rasm"]
+    headers = ["F.I.O.", "Harakat", "Vaqti", "Kenglik (Lat)", "Uzunlik (Lon)", "AI Selfi Rasm"]
     ws.append(headers)
 
     for row_idx, row in df_filtered.iterrows():
@@ -478,7 +508,7 @@ async def generate_excel_report(message: Message, state: FSMContext):
     report_file = FSInputFile(file_path)
     await message.answer_document(
         report_file, 
-        caption=f"📊 **{org.name}** tashkilotining {month_str} oyi uchun oylik keldi-ketdi hisoboti.", 
+        caption=f"📊 **{org.name}** tashkilotining {month_str} oyi uchun AI tasdiqlagan davomat hisoboti.", 
         reply_markup=get_menu("hr_admin")
     )
     await state.clear()
