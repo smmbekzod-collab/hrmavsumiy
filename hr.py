@@ -101,7 +101,7 @@ async def cmd_start(message: Message, state: FSMContext):
     logo_text = (
         "🌿 **[ A G R O S T A R ]** 🌿\n"
         "----------------------------\n"
-        "   **WMS & HR SYSTEM / 2026**"
+        "   ** HR SYSTEM / 2026**"
     )
 
     db = SessionLocal()
@@ -194,7 +194,7 @@ async def reg_face(message: Message, state: FSMContext):
         reply_markup=get_menu(role)
     )
 
---- ATTENDANCE PROCESS ---
+#--- ATTENDANCE PROCESS ---
 @router.message(F.text.in_(["🟢 Ishga Keldim", "🔴 Ishdan Ketdim"]))
 async def att_start(message: Message, state: FSMContext):
     action_type = "IN" if message.text == "🟢 Ishga Keldim" else "OUT"
@@ -287,7 +287,7 @@ async def att_face_verify(message: Message, state: FSMContext):
         reply_markup=get_menu(role)
     )
 
---- DELETE USER BY INDEX FOR HR ADMIN ---
+#--- DELETE USER BY INDEX FOR HR ADMIN ---
 @router.message(F.text == "🗑️ Xodimni o'chirish")
 async def delete_user_prompt(message: Message, state: FSMContext):
     db = SessionLocal()
@@ -350,7 +350,7 @@ async def delete_user_process(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(f"✅ '{name}' bazadan muvaffaqiyatli o'chirib yuborildi.", reply_markup=get_menu("hr_admin"))
 
---- EXCEL REPORT WITH EMBEDDED IMAGES ---
+#--- EXCEL REPORT WITH EMBEDDED IMAGES ---
 @router.message(F.text == "📊 Oylik Hisobot (Excel)")
 async def report_prompt(message: Message, state: FSMContext):
     db = SessionLocal()
