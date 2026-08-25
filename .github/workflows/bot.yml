@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   workflow_dispatch:
   schedule:
-    - cron: '0 */4 * * *' # Har 4 soatda avtomatik qayta ishga tushib turadi 
+    - cron: '0 */4 * * *' # Har 4 soatda avtomatik qayta ishga tushib turadi
 
 jobs:
   build:
