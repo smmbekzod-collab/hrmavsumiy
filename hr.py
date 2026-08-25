@@ -2,6 +2,8 @@ import asyncio
 import logging
 import os
 from datetime import datetime, date
+from PIL import Image as PILImage
+from PIL.ExifTags import TAGS
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -69,6 +71,7 @@ router = Router()
 
 os.makedirs("faces", exist_ok=True)
 os.makedirs("reports", exist_ok=True)
+os.makedirs("temp_downloads", exist_ok=True)
 
 class RegState(StatesGroup):
     name = State()
@@ -93,6 +96,38 @@ def get_menu(role):
         kb.append([KeyboardButton(text="📊 Oylik Hisobot (Excel)")])
         kb.append([KeyboardButton(text="🗑️ Xodimni o'chirish")])
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+
+# --- RASMDAGI EXIF VAQTINI TEKSHIRUVCHI FUNKSIYA ---
+def is_fresh_camera_photo(file_path):
+    try:
+        with PILImage.open(file_path) as img:
+            # 1. Format va o'lcham tekshiruvi (skrinshot yoki uy rasmlarini oldini olish uchun)
+            width, height = img.size
+            if width > height * 1.3 or height > width * 1.5:
+                # Juda noodatiy o'lchamlar yoki landshaft rasmlar
+                return False
+
+            # 2. EXIF ma'lumotlarini o'qish (telefon kamerasi saqlaydigan vaqt tamg'asi)
+            exif_data = img._getexif()
+            if not exif_data:
+                # Agar EXIF umuman bo'lmasa (ko'p hollarda galereyadan olingan yoki tahrirlangan rasmlarda bo'lmaydi)
+                # Lekin ba'zi telefonlar siqilgan rasmlarda EXIF'ni o'chirishi mumkin, shuning uchun fayl yaratilgan vaqtini ham tekshiramiz
+                return True 
+
+            for tag_id, value in exif_data.items():
+                tag = TAGS.get(tag_id, tag_id)
+                if tag == 'DateTimeOriginal' or tag == 'DateTime':
+                    # Masalan: "2026:08:25 14:30:00"
+                    photo_time = datetime.strptime(value, "%Y:%m:%d %H:%M:%S")
+                    time_diff = (datetime.now() - photo_time).total_seconds()
+                    
+                    # Agar rasm 3 daqiqadan (180 sekund) oldin olingan bo'lsa yoki kelajakdagi vaqt bo'lsa - rad etamiz!
+                    if time_diff > 180 or time_diff < -10:
+                        return False
+        return True
+    except Exception:
+        # Agar rasm faylida qandaydir xatolik bo'lsa
+        return True
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
@@ -152,8 +187,8 @@ async def reg_org(message: Message, state: FSMContext):
 
     await message.answer(
         "🚨 **DIQQAT! QAT'IY QOIDALAR:**\n\n"
-        "Galereyadan eski rasm yoki boshqa fayl yuborish taqiqlanadi! "
-        "Faqat telefoningiz kamerasi orqali **jonli selfi** olib yuboring (aks holda tizim ro'yxatdan o'tkazmaydi):",
+        "Galereyadan eski rasm, uy rasmi yoki boshqa narsalarni yuborish taqiqlanadi! "
+        "Tizim faqat hozir telefon kamerasi orqali olingan **jonli selfi**ni qabul qiladi:",
         reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(RegState.face_photo)
@@ -162,14 +197,20 @@ async def reg_org(message: Message, state: FSMContext):
 async def reg_face(message: Message, state: FSMContext):
     photo = message.photo[-1]
     
-    # Qattiq tekshiruv: Agar rasm kengligi balandligidan sezilarli farq qilsa yoki galereyadan olingan landshaft format bo'lsa
-    if photo.width > photo.height:
-        await message.answer("❌ **Xatolik!** Bu galereyadan olingan yoki gorizontal rasmga o'xshaydi.\nIltimos, galereyadan emas, **faqat kamerani ochib jonli selfi** yuboring:")
+    temp_path = f"temp_downloads/reg_temp_{message.from_user.id}.jpg"
+    file_info = await bot.get_file(photo.file_id)
+    await bot.download_file(file_info.file_path, temp_path)
+
+    # Vaqt va kamera tekshiruvi
+    if not is_fresh_camera_photo(temp_path):
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        await message.answer("❌ **Rad etildi!** Bu eski rasm yoki galereyadan yuklangan fayl.\nIltimos, galereyadan foydalanmang, **hozir kamerani ochib jonli selfi** oling:")
         return
 
-    file_info = await bot.get_file(photo.file_id)
     file_path = f"faces/reg_{message.from_user.id}.jpg"
-    await bot.download_file(file_info.file_path, file_path)
+    if os.path.exists(temp_path):
+        os.rename(temp_path, file_path)
 
     data = await state.get_data()
     db = SessionLocal()
@@ -246,7 +287,7 @@ async def att_location(message: Message, state: FSMContext):
 
     await message.answer(
         "✅ Lokatsiya qabul qilindi!\n\n"
-        "🚨 **DIQQAT:** Galereyadan eski rasm tashlash qat'iyan taqiqlanadi! "
+        "🚨 **DIQQAT:** Galereyadagi eski rasmlar yoki uy rasmlarini yuborish qat'iyan taqiqlanadi! "
         "Hozir turgan joyingizni tasdiqlash uchun **faqat kamerani ochib jonli selfi** yuboring:", 
         reply_markup=ReplyKeyboardRemove()
     )
@@ -256,10 +297,20 @@ async def att_location(message: Message, state: FSMContext):
 async def att_face_verify(message: Message, state: FSMContext):
     photo = message.photo[-1]
 
-    # Qattiq tekshiruv: Galereyadan yuklangan yoki yotig'i (gorizontal) rasmlarni bloklash
-    if photo.width > photo.height:
-        await message.answer("❌ **Rad etildi!** Bu galereyadan olingan eski yoki noto'g'ri formatdagi rasm.\nIltimos, galereyadan foydalanmang, **faqat kameradan jonli selfi** olib tashlang:")
+    temp_path = f"temp_downloads/check_temp_{message.from_user.id}.jpg"
+    file_info = await bot.get_file(photo.file_id)
+    await bot.download_file(file_info.file_path, temp_path)
+
+    # Vaqt va kamera tekshiruvi (Eski yoki boshqa rasmlarni bloklaydi)
+    if not is_fresh_camera_photo(temp_path):
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        await message.answer("❌ **Rad etildi!** Bu eskirgan rasm yoki galereyadan olingan fayl.\nIltimos, galereyadan foydalanmang, **hozir kamerani ochib o'zgingizning jonli selfiyingizni** yuboring:")
         return
+
+    check_path = f"faces/check_{message.from_user.id}_{int(datetime.now().timestamp())}.jpg"
+    if os.path.exists(temp_path):
+        os.rename(temp_path, check_path)
 
     data = await state.get_data()
     action_type = data.get("action_type", "IN")
@@ -268,10 +319,6 @@ async def att_face_verify(message: Message, state: FSMContext):
 
     db = SessionLocal()
     user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
-
-    file_info = await bot.get_file(photo.file_id)
-    check_path = f"faces/check_{message.from_user.id}_{int(datetime.now().timestamp())}.jpg"
-    await bot.download_file(file_info.file_path, check_path)
 
     new_att = Attendance(
         telegram_id=user.telegram_id,
@@ -430,7 +477,7 @@ async def generate_excel_report(message: Message, state: FSMContext):
         current_row = ws.max_row
         
         ws.row_dimensions[current_row].height = 60
-        ws.column_dimensions['F'].width = 15
+        ws.column_dimensions['F'].width.width = 15 if hasattr(ws.column_dimensions['F'], 'width') else 15
 
         if photo_path and os.path.exists(photo_path):
             try:
