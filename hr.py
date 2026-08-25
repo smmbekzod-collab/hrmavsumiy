@@ -99,26 +99,25 @@ def get_menu(role):
         kb.append([KeyboardButton(text="🗑️ Xodimni o'chirish")])
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-# --- SUN'IY INTELLEKT ORQALI YUZNI TEKSHIRISH (TO'G'RILANGAN VERSİYA) ---
+
+# =====================================================================
+# --- SUN'IY INTELLEKT ORQALI YUZNI TEKSHIRISH (MTCNN KUCHLI VERSİYA) ---
+# =====================================================================
+
 def verify_human_face(img_path):
     """
-    Rasmda haqiqiy odam yuzi bor-yo'qligini ishonchli va yumshoqroq tekshiradi.
-    `enforce_detection=False` tufayli kod to'xtab qolmaydi.
+    Rasmda haqiqiy odam yuzi borligini 'mtcnn' yordamida juda aniq tekshiradi.
     """
     try:
+        # opencv o'rniga eng aniq mtcnn algoritmini ishlatamiz
         faces = DeepFace.extract_faces(
             img_path=img_path,
-            detector_backend='opencv',
-            enforce_detection=False
+            detector_backend='mtcnn',
+            enforce_detection=True # mtcnn xato qilmaydi, yuz bo'lmasa qat'iy rad etadi
         )
-        if len(faces) > 0:
-            confidence = faces[0].get("confidence", 0)
-            # Agar yuzning aniqlik darajasi 40% dan yuqori bo'lsa, inson yuzi deb qabul qilamiz
-            if confidence > 0.40:
-                return True
-        return False
+        return True # Agar xato bermasa, yuz aniq bor!
     except Exception as e:
-        print(f"Yuzni aniqlashda ogohlantirish: {e}")
+        print(f"Yuz topilmadi (MTCNN): {e}")
         return False
 
 def compare_faces(img1_path, img2_path):
@@ -129,13 +128,17 @@ def compare_faces(img1_path, img2_path):
         result = DeepFace.verify(
             img1_path=img1_path, 
             img2_path=img2_path, 
-            detector_backend='opencv',
+            model_name='VGG-Face', # Yuzni tanish uchun kuchli model
+            detector_backend='mtcnn', # Bu yerda ham mtcnn ishlatamiz
             enforce_detection=False
         )
         return result.get("verified", False)
     except Exception as e:
         print(f"Yuzlarni solishtirishda xatolik: {e}")
         return False
+
+# =====================================================================
+
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
@@ -212,7 +215,7 @@ async def reg_face(message: Message, state: FSMContext):
     if not verify_human_face(temp_path):
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        await message.answer("❌ **AI Rad etdi!** Rasmda inson yuzi aniqlanmadi (buyum yoki tushunarsiz rasm).\nIltimos, **o'z yuzingizni** aniqroq qilib yuboring:")
+        await message.answer("❌ **AI Rad etdi!** Rasmda inson yuzi aniqlanmadi (yoki yorug'lik juda past).\nIltimos, **o'z yuzingizni** aniqroq qilib yuboring:")
         return
 
     file_path = f"faces/reg_{message.from_user.id}.jpg"
@@ -317,7 +320,7 @@ async def att_face_verify(message: Message, state: FSMContext):
         if os.path.exists(temp_path):
             os.remove(temp_path)
         db.close()
-        await message.answer("❌ **AI Rad etdi!** Yuborilgan rasmda inson yuzi topilmadi (baklashka yoki buyum). Iltimos, **o'z yuzingizni** yuboring:")
+        await message.answer("❌ **AI Rad etdi!** Yuborilgan rasmda inson yuzi topilmadi. Iltimos, **o'z yuzingizni** yuboring:")
         return
 
     # 2. SUN'IY INTELLEKT ORQALI IKKI YUZNI TAQQOSLAYMIZ
