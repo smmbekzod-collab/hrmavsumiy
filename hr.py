@@ -96,14 +96,26 @@ def get_menu(role):
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
+    
+    # Chiroyli logotip matni
+    logo_text = (
+        "🌿 **[ A G R O S T A R ]** 🌿\n"
+        "----------------------------\n"
+        "   **WMS & HR SYSTEM / 2026**"
+    )
+    
     db = SessionLocal()
     user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
     db.close()
 
     if not user:
+        # Avval logotipni, keyin ro'yxatdan o'tish matnini yuboramiz
+        await message.answer(logo_text, parse_mode="Markdown")
         await message.answer("👋 Assalomu alaykum! Mavsumiy xodimlar nazorati tizimiga xush kelibsiz.\nTo'liq F.I.O. ingizni kiriting:")
         await state.set_state(RegState.name)
     else:
+        # Agar ro'yxatdan o'tgan bo'lsa, logotip bilan birga xush kelibsiz deymiz
+        await message.answer(logo_text, parse_mode="Markdown")
         await message.answer(f"Xush kelibsiz, {user.full_name}!", reply_markup=get_menu(user.role))
 
 @router.message(RegState.name)
