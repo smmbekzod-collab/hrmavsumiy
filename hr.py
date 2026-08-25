@@ -12,7 +12,9 @@ from aiogram.types import (
     Message,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
-    FSInputFile
+    FSInputFile,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
 )
 import pandas as pd
 import openpyxl
@@ -96,20 +98,20 @@ def get_menu(role):
         kb.append([KeyboardButton(text="🗑️ Xodimni o'chirish")])
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-# --- QAT'IY TEKSHIRUV (FAQAT KAMERA FORMATI VA PROPORTSIYA) ---
-def validate_camera_image(file_path):
+# --- FAYL VA KAMERA FORMATINI TEKSHIRUVCHI QAT'IY FUNKSIYA ---
+def validate_camera_capture(file_path):
     try:
         with PILImage.open(file_path) as img:
             width, height = img.size
             
-            # 1. Agar rasm juda keng yoki landshaft (Landscaped) bo'lsa - bu uy yoki galereya rasmidir (Selfi har doim portret - bo'yi uzun bo'ladi)
-            if width >= height:
+            # 1. Selfi har doim portret (tik) bo'lishi kerak. Eni bo'yidan katta bo'lsa (yotiq rasm/baklashka/uy rasmi) - rad etamiz
+            if width > height:
                 return False
-
-            # 2. Skrinshot yoki boshqa shakldagi rasmlarni nisbati bo'yicha keskin rad etish
-            if height / width < 1.1 or height / width > 2.5:
+                
+            # 2. Juda kichik yoki juda g'alati o'lchamdagi rasmlarni bloklash
+            if width < 300 or height < 400:
                 return False
-
+                
         return True
     except Exception:
         return False
@@ -171,9 +173,8 @@ async def reg_org(message: Message, state: FSMContext):
     db.close()
 
     await message.answer(
-        "🚨 **QAT'IY QOIDA:**\n\n"
-        "Galereyadan eski rasm, skrinshot yoki uy rasmini yuborish mutlaqo mumkin emas!\n"
-        "Faqat telefon kamerasi orqali olingan **tik holatdagi (portret) jonli selfi** qabul qilinadi:",
+        "📸 **KAMERA ORQALI RASMGA OLISH TALabi:**\n\n"
+        "Iltimos, galereyadan foydalanmang! Telefoningizdagi **kamera tugmasini bosib**, to'g'ridan-to'g'ri o'zingizning **jonli selfiyingizni** tushirib yuboring:",
         reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(RegState.face_photo)
@@ -186,10 +187,10 @@ async def reg_face(message: Message, state: FSMContext):
     file_info = await bot.get_file(photo.file_id)
     await bot.download_file(file_info.file_path, temp_path)
 
-    if not validate_camera_image(temp_path):
+    if not validate_camera_capture(temp_path):
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        await message.answer("❌ **Rad etildi!** Bu noto'g'ri formatdagi, yotig'i (gorizontal) yoki galereyadan olingan rasm.\nIltimos, **faqat kamerani ochib jonli selfi** oling:")
+        await message.answer("❌ **Rad etildi!** Bu galereyadan olingan yoki yotiq holatdagi rasm/buyum.\nIltimos, **faqat kamerani ochib jonli selfi** oling:")
         return
 
     file_path = f"faces/reg_{message.from_user.id}.jpg"
@@ -271,7 +272,8 @@ async def att_location(message: Message, state: FSMContext):
 
     await message.answer(
         "✅ Lokatsiya qabul qilindi!\n\n"
-        "🚨 **DIQQAT:** Galereyadan eski rasm, skrinshot yoki uy rasmini yuborish qat'iyan taqiqlanadi! "
+        "📸 **KAMERA ORQALI SELFİ YUBORING:**\n"
+        "Galereyadan foydalanish yoki boshqa narsalarning rasmini tashlash qat'iyan taqiqlanadi! "
         "Hozir turgan joyingizni tasdiqlash uchun **faqat kamerani ochib jonli selfi** yuboring:", 
         reply_markup=ReplyKeyboardRemove()
     )
@@ -285,10 +287,10 @@ async def att_face_verify(message: Message, state: FSMContext):
     file_info = await bot.get_file(photo.file_id)
     await bot.download_file(file_info.file_path, temp_path)
 
-    if not validate_camera_image(temp_path):
+    if not validate_camera_capture(temp_path):
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        await message.answer("❌ **Rad etildi!** Bu galereyadan olingan yoki noto'g'ri formatdagi (gorizontal/skrinshot) rasm.\nIltimos, **kamerani ochib o'zingizning jonli selfiyingizni** yuboring:")
+        await message.answer("❌ **Rad etildi!** Bu galereyadan olingan yoki noto'g'ri formatdagi rasm.\nIltimos, **kamerani ochib o'zingizning jonli selfiyingizni** yuboring:")
         return
 
     check_path = f"faces/check_{message.from_user.id}_{int(datetime.now().timestamp())}.jpg"
