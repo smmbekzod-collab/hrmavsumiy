@@ -4,6 +4,8 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+  schedule:
+    - cron: '0 */4 * * *' # Har 4 soatda avtomatik qayta ishga tushib turadi
 
 jobs:
   build:
@@ -22,6 +24,9 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+
+    - name: Setup Org if missing
+      run: python add_org.py || true
 
     - name: Run bot
       run: python hr.py
