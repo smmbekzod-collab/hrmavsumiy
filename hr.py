@@ -99,37 +99,42 @@ def get_menu(role):
         kb.append([KeyboardButton(text="🗑️ Xodimni o'chirish")])
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-# --- SUN'IY INTELLECT ORQALI YUZNI TEKSHIRISH VA ANIQ ANIqlash ---
+# --- SUN'IY INTELLEKT ORQALI YUZNI TEKSHIRISH (TO'G'RILANGAN VERSİYA) ---
 def verify_human_face(img_path):
     """
-    DeepFace yordamida rasmda haqiqiy odam yuzi bor-yo'qligini tekshiradi.
-    Agar rasmda yuz topilmasa yoki u baklashka/buyum bo'lsa, xato beradi.
+    Rasmda haqiqiy odam yuzi bor-yo'qligini ishonchli va yumshoqroq tekshiradi.
+    `enforce_detection=False` tufayli kod to'xtab qolmaydi.
     """
     try:
-        # Rasmda yuz mavjudligini va sifatini aniqlash uchun detector_backend (opencv yoki retinaface)
-        analysis = DeepFace.extract_faces(img_path = img_path, detector_backend = 'opencv', enforce_detection = True)
-        if len(analysis) > 0:
-            return True
+        faces = DeepFace.extract_faces(
+            img_path=img_path,
+            detector_backend='opencv',
+            enforce_detection=False
+        )
+        if len(faces) > 0:
+            confidence = faces[0].get("confidence", 0)
+            # Agar yuzning aniqlik darajasi 40% dan yuqori bo'lsa, inson yuzi deb qabul qilamiz
+            if confidence > 0.40:
+                return True
         return False
     except Exception as e:
-        print(f"Yuz aniqlanmadi: {e}")
+        print(f"Yuzni aniqlashda ogohlantirish: {e}")
         return False
 
 def compare_faces(img1_path, img2_path):
     """
-    Ikki rasm (Ro'yxatdan o'tishdagi rasm va Hozirgi tashlangan rasm) 
-    bir xil odamga tegishli ekanligini AI orqali tekshiradi.
+    Ro'yxatdan o'tishdagi va hozirgi rasmni solishtiradi.
     """
     try:
         result = DeepFace.verify(
-            img1_path = img1_path, 
-            img2_path = img2_path, 
-            detector_backend = 'opencv',
-            enforce_detection = True
+            img1_path=img1_path, 
+            img2_path=img2_path, 
+            detector_backend='opencv',
+            enforce_detection=False
         )
         return result.get("verified", False)
     except Exception as e:
-        print(f"Yuzni solishtirishda xatolik: {e}")
+        print(f"Yuzlarni solishtirishda xatolik: {e}")
         return False
 
 @router.message(Command("start"))
@@ -190,7 +195,7 @@ async def reg_org(message: Message, state: FSMContext):
 
     await message.answer(
         "🤖 **SUN'IY INTELLEKT YUZINI QAYD ETISH:**\n\n"
-        "Iltimos, kamera orqali **faqat o'z yuzingiz aniq ko'ringan** selfi yuboring. AI bu rasmni sizning etalon bazangizga saqlab oladi:",
+        "Iltimos, kamera orqali **o'z yuzingiz ko'ringan** selfi yuboring. AI bu rasmni sizning etalon bazangizga saqlab oladi:",
         reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(RegState.face_photo)
@@ -207,7 +212,7 @@ async def reg_face(message: Message, state: FSMContext):
     if not verify_human_face(temp_path):
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        await message.answer("❌ **AI Rad etdi!** Bu yerda aniq inson yuzi topilmadi (baklashka yoki boshqa narsa o'tmaydi).\nIltimos, **faqat o'z yuzingizni** aniq qilib yuboring:")
+        await message.answer("❌ **AI Rad etdi!** Rasmda inson yuzi aniqlanmadi (buyum yoki tushunarsiz rasm).\nIltimos, **o'z yuzingizni** aniqroq qilib yuboring:")
         return
 
     file_path = f"faces/reg_{message.from_user.id}.jpg"
@@ -233,7 +238,7 @@ async def reg_face(message: Message, state: FSMContext):
 
     await state.clear()
     await message.answer(
-        f"✅ **Tabriklayman! AI yuzingizni muvaffaqiyatli tanib bazaga saqladi.**\n"
+        f"✅ **Tabriklayman! AI yuzingizni muvaffaqiyatli saqladi.**\n"
         f"Sizning rolingiz: **{role.upper()}**",
         reply_markup=get_menu(role)
     )
@@ -290,8 +295,7 @@ async def att_location(message: Message, state: FSMContext):
     await message.answer(
         "✅ Lokatsiya qabul qilindi!\n\n"
         "🤖 **AI YUZNI TEKSHIRISH BOSQICHI:**\n"
-        "Hozir yuboradigan selfiyingiz **ro'yxatdan o'tganingizdagi yuzingiz bilan 100% mos kelishi shart!** "
-        "Boshqa odam, baklashka yoki eski boshqa rasm o'tmaydi. Jonli selfi yuboring:", 
+        "Iltimos, o'zingizning jonli selfiyingizni yuboring. AI rasmni ro'yxatdan o'tgan yuzingiz bilan taqqoslaydi:", 
         reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(AttState.face_check)
@@ -316,7 +320,7 @@ async def att_face_verify(message: Message, state: FSMContext):
         await message.answer("❌ **AI Rad etdi!** Yuborilgan rasmda inson yuzi topilmadi (baklashka yoki buyum). Iltimos, **o'z yuzingizni** yuboring:")
         return
 
-    # 2. SUN'IY INTELLEKT ORQALI IKKI YUZNI TAQQOSLAYMIZ (Face Verification)
+    # 2. SUN'IY INTELLEKT ORQALI IKKI YUZNI TAQQOSLAYMIZ
     is_same_person = compare_faces(registered_face_path, temp_path)
 
     if not is_same_person:
@@ -439,7 +443,7 @@ async def generate_excel_report(message: Message, state: FSMContext):
     try:
         year, month = map(int, month_str.split("-"))
     except ValueError:
-        await message.answer("Noto'g'ri format. Iltimos, YYYY-MM ko'rinishida kiriting (masalan: 2026-08):", reply_markup=get_menu("hr_admin"))
+        await message.answer("Noto'g meyoriy format. Iltimos, YYYY-MM ko'rinishida kiriting (masalan: 2026-08):", reply_markup=get_menu("hr_admin"))
         return
 
     db = SessionLocal()
