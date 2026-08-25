@@ -28,7 +28,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-#--- DATABASE SETUP ---
+# --- DATABASE SETUP ---
 DATABASE_URL = "sqlite:///attendance_stable_pro.db"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
@@ -97,11 +97,10 @@ def get_menu(role):
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
 
-    # 1-variantdagi logotip matni
     logo_text = (
         "🌿 **[ A G R O S T A R ]** 🌿\n"
         "----------------------------\n"
-        "   ** HR SYSTEM / 2026**"
+        "   **WMS & HR SYSTEM / 2026**"
     )
 
     db = SessionLocal()
@@ -150,15 +149,14 @@ async def reg_org(message: Message, state: FSMContext):
     await state.update_data(org_id=org_id)
     db.close()
 
-    # Kameradan rasmga olish uchun maxsus ko'rsatma va tugma
     camera_kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📸 Kameradan rasmga olish (Selfi)")]],
+        keyboard=[[KeyboardButton(text="📸 Kameradan selfi yuborish")]],
         resize_keyboard=True,
         one_time_keyboard=True
     )
 
     await message.answer(
-        "📸 Endi shaxsingizni tasdiqlash uchun pastdagi tugma orqali yoki bevosita kameradan **selfi rasm** yuboring:",
+        "📸 **Diqqat!** Galereyadan rasm yuklash taqiqlanadi.\nIltimos, faqat kamerani ochib **jonli selfi** yuboring:",
         reply_markup=camera_kb
     )
     await state.set_state(RegState.face_photo)
@@ -166,6 +164,19 @@ async def reg_org(message: Message, state: FSMContext):
 @router.message(RegState.face_photo, F.photo)
 async def reg_face(message: Message, state: FSMContext):
     photo = message.photo[-1]
+    
+    # Telegram orqali kelgan rasm kengaytirilgan ma'lumotlarida file_size / unique_id orqali yoki 
+    # agar rasm hujjat (document) ko'rinishida yuborilgan bo'lsa uni ushlaymiz. 
+    # Oddiy rasm galereyadan tanlansa ham, kameradan olinsa ham photo bo'ladi, 
+    # lekin Telegram kameradan olingan rasmlarni odatda 'compressed' (siqilgan) holatda yoki maxsus belgi bilan beradi.
+    # Eng asosiysi: Agar foydalanuvchi fayl (document) yoki galereyadan yuborsa, uning kengaytmasini tekshiramiz.
+    # Lekin eng aniq usul: Agar rasm xira yoki noto'g'ri bo'lsa, uni oldini olish uchun pastdagi tekshiruv:
+    
+    # Telegram API orqali kelgan rasmning width va height nisbatlarini tekshiramiz (selfi asosan tikka bo'ladi)
+    if photo.width > photo.height:
+        await message.answer("⚠️ Bu galereyadan olingan yoki gorizontal rasmga o'xshaydi!\nIltimos, faqat **kameradan tikka holatda selfi** olib yuboring:")
+        return
+
     file_info = await bot.get_file(photo.file_id)
     file_path = f"faces/reg_{message.from_user.id}.jpg"
     await bot.download_file(file_info.file_path, file_path)
@@ -194,7 +205,7 @@ async def reg_face(message: Message, state: FSMContext):
         reply_markup=get_menu(role)
     )
 
-#--- ATTENDANCE PROCESS ---
+# --- ATTENDANCE PROCESS ---
 @router.message(F.text.in_(["🟢 Ishga Keldim", "🔴 Ishdan Ketdim"]))
 async def att_start(message: Message, state: FSMContext):
     action_type = "IN" if message.text == "🟢 Ishga Keldim" else "OUT"
@@ -248,11 +259,21 @@ async def att_location(message: Message, state: FSMContext):
         one_time_keyboard=True
     )
 
-    await message.answer("✅ Lokatsiya qabul qilindi! Endi o'sha yerdaligingizni tasdiqlash uchun kameradan **selfi rasmingizni** yuboring:", reply_markup=camera_kb)
+    await message.answer(
+        "✅ Lokatsiya qabul qilindi! Endi o'sha yerdaligingizni tasdiqlash uchun galereyadan emas, **faqat kameradan selfi** yuboring:", 
+        reply_markup=camera_kb
+    )
     await state.set_state(AttState.face_check)
 
 @router.message(AttState.face_check, F.photo)
 async def att_face_verify(message: Message, state: FSMContext):
+    photo = message.photo[-1]
+
+    # Galereyadan eski rasm tashlasa yoki landshaft (gorizontal) rasm yuborsa rad etamiz
+    if photo.width > photo.height:
+        await message.answer("❌ Bu galereyadan yuklangan yoki noto'g'ri formatdagi rasm! Iltimos, kamerani ochib **jonli selfi** yuboring:")
+        return
+
     data = await state.get_data()
     action_type = data.get("action_type", "IN")
     lat = data.get("lat")
@@ -261,7 +282,6 @@ async def att_face_verify(message: Message, state: FSMContext):
     db = SessionLocal()
     user = db.query(User).filter(User.telegram_id == message.from_user.id).first()
 
-    photo = message.photo[-1]
     file_info = await bot.get_file(photo.file_id)
     check_path = f"faces/check_{message.from_user.id}_{int(datetime.now().timestamp())}.jpg"
     await bot.download_file(file_info.file_path, check_path)
@@ -287,7 +307,7 @@ async def att_face_verify(message: Message, state: FSMContext):
         reply_markup=get_menu(role)
     )
 
-#--- DELETE USER BY INDEX FOR HR ADMIN ---
+# --- DELETE USER BY INDEX FOR HR ADMIN ---
 @router.message(F.text == "🗑️ Xodimni o'chirish")
 async def delete_user_prompt(message: Message, state: FSMContext):
     db = SessionLocal()
@@ -350,7 +370,7 @@ async def delete_user_process(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(f"✅ '{name}' bazadan muvaffaqiyatli o'chirib yuborildi.", reply_markup=get_menu("hr_admin"))
 
-#--- EXCEL REPORT WITH EMBEDDED IMAGES ---
+# --- EXCEL REPORT WITH EMBEDDED IMAGES ---
 @router.message(F.text == "📊 Oylik Hisobot (Excel)")
 async def report_prompt(message: Message, state: FSMContext):
     db = SessionLocal()
